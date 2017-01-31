@@ -25,6 +25,7 @@ import android.media.browse.MediaBrowser;
 import android.media.session.MediaController;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.SystemClock;
@@ -39,12 +40,18 @@ import android.widget.TextView;
 import com.example.android.uamp.AlbumArtCache;
 import com.example.android.uamp.MusicService;
 import com.example.android.uamp.R;
+import com.example.android.uamp.model.RadioResult;
+import com.example.android.uamp.services.MappingManager;
 import com.example.android.uamp.utils.LogHelper;
 
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+
+import rx.Subscriber;
+import rx.android.schedulers.AndroidSchedulers;
+import rx.schedulers.Schedulers;
 
 import static android.view.View.INVISIBLE;
 import static android.view.View.VISIBLE;
@@ -404,4 +411,9 @@ public class FullScreenPlayerActivity extends ActionBarCastActivity {
         }
         mSeekbar.setProgress((int) currentPosition);
     }
+
+    private void displayUpdate() {
+
+    }
+
 }

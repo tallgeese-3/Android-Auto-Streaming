@@ -47,10 +47,10 @@ public class MusicProvider {
     private static final String TAG = LogHelper.makeLogTag(MusicProvider.class);
 
     private static final String CATALOG_URL =
-        "http://storage.googleapis.com/automotive-media/music.json";
+        "https://s3.amazonaws.com/musicfeedscoxhackathon2017/music.json";
 
     public static final String CUSTOM_METADATA_TRACK_SOURCE = "__SOURCE__";
-
+    public static final String CUSTOM_METADATA_DEFAULT_IMAGE = "__DEFAULT_IMAGE__";
     private static final String JSON_MUSIC = "music";
     private static final String JSON_TITLE = "title";
     private static final String JSON_ALBUM = "album";
@@ -58,6 +58,7 @@ public class MusicProvider {
     private static final String JSON_GENRE = "genre";
     private static final String JSON_SOURCE = "source";
     private static final String JSON_IMAGE = "image";
+    private static final String JSON_DEFAULT_IMAGE = "default_image";
     private static final String JSON_TRACK_NUMBER = "trackNumber";
     private static final String JSON_TOTAL_TRACK_COUNT = "totalTrackCount";
     private static final String JSON_DURATION = "duration";
@@ -275,6 +276,7 @@ public class MusicProvider {
         String artist = json.getString(JSON_ARTIST);
         String genre = json.getString(JSON_GENRE);
         String source = json.getString(JSON_SOURCE);
+        String defaultImage =  json.getString(JSON_DEFAULT_IMAGE);
         String iconUrl = json.getString(JSON_IMAGE);
         int trackNumber = json.getInt(JSON_TRACK_NUMBER);
         int totalTrackCount = json.getInt(JSON_TOTAL_TRACK_COUNT);
@@ -300,6 +302,7 @@ public class MusicProvider {
         return new MediaMetadata.Builder()
                 .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, id)
                 .putString(CUSTOM_METADATA_TRACK_SOURCE, source)
+                .putString(CUSTOM_METADATA_DEFAULT_IMAGE, defaultImage)
                 .putString(MediaMetadata.METADATA_KEY_ALBUM, album)
                 .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
                 .putLong(MediaMetadata.METADATA_KEY_DURATION, duration)

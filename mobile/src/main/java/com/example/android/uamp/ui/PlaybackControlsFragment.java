@@ -144,6 +144,8 @@ public class PlaybackControlsFragment extends Fragment {
         String artUrl = null;
         if (metadata.getDescription().getIconUri() != null) {
             artUrl = metadata.getDescription().getIconUri().toString();
+        } else {
+            artUrl = metadata.getDescription().getExtras().getString("default_image");
         }
         if (!TextUtils.equals(artUrl, mArtUrl)) {
             mArtUrl = artUrl;

@@ -182,8 +182,7 @@ public class LocalPlayback implements Playback, AudioManager.OnAudioFocusChangeL
                 createMediaPlayerIfNeeded();
 
                 mState = PlaybackState.STATE_BUFFERING;
-
-                mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+                //mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
                 mMediaPlayer.setDataSource(source);
 
                 // Starts preparing the media player in the background. When

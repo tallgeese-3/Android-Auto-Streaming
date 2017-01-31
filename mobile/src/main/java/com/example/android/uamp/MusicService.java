@@ -22,6 +22,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
+import android.graphics.drawable.Drawable;
 import android.media.MediaDescription;
 import android.media.MediaMetadata;
 import android.media.browse.MediaBrowser;
@@ -29,6 +30,7 @@ import android.media.browse.MediaBrowser.MediaItem;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -39,6 +41,9 @@ import android.support.v7.media.MediaRouter;
 import android.text.TextUtils;
 
 import com.example.android.uamp.model.MusicProvider;
+import com.example.android.uamp.model.RadioResult;
+import com.example.android.uamp.model.VulcanRadioResult;
+import com.example.android.uamp.services.MappingManager;
 import com.example.android.uamp.ui.NowPlayingActivity;
 import com.example.android.uamp.utils.CarHelper;
 import com.example.android.uamp.utils.LogHelper;
@@ -48,11 +53,29 @@ import com.example.android.uamp.utils.WearHelper;
 import com.google.android.gms.cast.ApplicationMetadata;
 import com.google.android.libraries.cast.companionlibrary.cast.VideoCastManager;
 import com.google.android.libraries.cast.companionlibrary.cast.callbacks.VideoCastConsumerImpl;
+import com.squareup.picasso.Picasso;
+import com.squareup.picasso.Target;
+
+import org.apache.commons.lang3.text.WordUtils;
 
 import java.lang.ref.WeakReference;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+import rx.Observable;
+import rx.Scheduler;
+import rx.Subscriber;
+import rx.Subscription;
+import rx.android.schedulers.AndroidSchedulers;
+import rx.schedulers.Schedulers;
 
 import static com.example.android.uamp.utils.MediaIDHelper.MEDIA_ID_MUSICS_BY_GENRE;
 import static com.example.android.uamp.utils.MediaIDHelper.MEDIA_ID_ROOT;
@@ -154,6 +177,10 @@ public class MusicService extends MediaBrowserService implements Playback.Callba
 
     private boolean mIsConnectedToCar;
     private BroadcastReceiver mCarConnectionReceiver;
+    private Target loadtarget;
+    private Subscription subscription;
+    private VulcanRadioResult mVulcanRadioResult;
+    VulcanRadioResult.RadioObject mRadioObject;
 
     /**
      * Consumer responsible for switching the Playback instances depending on whether
@@ -649,6 +676,10 @@ public class MusicService extends MediaBrowserService implements Playback.Callba
     }
 
     private void updateMetadata() {
+        if (subscription != null) {
+            subscription.unsubscribe();
+            subscription = null;
+        }
         if (!QueueHelper.isIndexPlayable(mCurrentIndexOnQueue, mPlayingQueue)) {
             LogHelper.e(TAG, "Can't retrieve current metadata.");
             updatePlaybackState(getResources().getString(R.string.error_no_metadata));
@@ -657,59 +688,122 @@ public class MusicService extends MediaBrowserService implements Playback.Callba
         MediaSession.QueueItem queueItem = mPlayingQueue.get(mCurrentIndexOnQueue);
         String musicId = MediaIDHelper.extractMusicIDFromMediaID(
                 queueItem.getDescription().getMediaId());
-        MediaMetadata track = mMusicProvider.getMusic(musicId);
-        if (track == null) {
+        MediaMetadata originalTrack = mMusicProvider.getMusic(musicId);
+        if (originalTrack == null) {
             throw new IllegalArgumentException("Invalid musicId " + musicId);
         }
-        final String trackId = track.getString(MediaMetadata.METADATA_KEY_MEDIA_ID);
+        final String trackId = originalTrack.getString(MediaMetadata.METADATA_KEY_MEDIA_ID);
         if (!TextUtils.equals(musicId, trackId)) {
             IllegalStateException e = new IllegalStateException("track ID should match musicId.");
             LogHelper.e(TAG, "track ID should match musicId.",
                 " musicId=", musicId, " trackId=", trackId,
                 " mediaId from queueItem=", queueItem.getDescription().getMediaId(),
                 " title from queueItem=", queueItem.getDescription().getTitle(),
-                " mediaId from track=", track.getDescription().getMediaId(),
-                " title from track=", track.getDescription().getTitle(),
-                " source.hashcode from track=", track.getString(MusicProvider.CUSTOM_METADATA_TRACK_SOURCE).hashCode(),
+                " mediaId from track=", originalTrack.getDescription().getMediaId(),
+                " title from track=", originalTrack.getDescription().getTitle(),
+                " source.hashcode from track=", originalTrack.getString(MusicProvider.CUSTOM_METADATA_TRACK_SOURCE).hashCode(),
                 e);
             throw e;
         }
         LogHelper.d(TAG, "Updating metadata for MusicID= " + musicId);
-        mSession.setMetadata(track);
-
+        mSession.setMetadata(originalTrack);
         // Set the proper album artwork on the media session, so it can be shown in the
         // locked screen and in other places.
-        if (track.getDescription().getIconBitmap() == null &&
-                track.getDescription().getIconUri() != null) {
-            String albumUri = track.getDescription().getIconUri().toString();
-            AlbumArtCache.getInstance().fetch(albumUri, new AlbumArtCache.FetchListener() {
-                @Override
-                public void onFetched(String artUrl, Bitmap bitmap, Bitmap icon) {
-                    MediaSession.QueueItem queueItem = mPlayingQueue.get(mCurrentIndexOnQueue);
-                    MediaMetadata track = mMusicProvider.getMusic(trackId);
-                    track = new MediaMetadata.Builder(track)
+        if (originalTrack.getString(MediaMetadata.METADATA_KEY_ALBUM).equals("B98.5 Live Radio")) {
+                subscription = Observable
+                        .interval(5, TimeUnit.SECONDS).startWith(Long.valueOf(0))
+                        .flatMap(r -> MappingManager.getInstance(this, MappingManager.CONFIG_MODE.RELEASE)
+                                .generateRandomCallback())
+                        .flatMap(r -> {
+                            return MappingManager.getInstance(this, MappingManager.CONFIG_MODE.RELEASE).getRadioData(this, getString(R.string.radio_feed), r, "json");
+                        })
+                        .subscribeOn(Schedulers.from(AsyncTask.THREAD_POOL_EXECUTOR))
+                        .observeOn(AndroidSchedulers.mainThread())
+                        .subscribe(new Subscriber<VulcanRadioResult>() {
+                            @Override
+                            public void onCompleted() {
 
-                        // set high resolution bitmap in METADATA_KEY_ALBUM_ART. This is used, for
-                        // example, on the lockscreen background when the media session is active.
-                        .putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, bitmap)
+                            }
 
-                        // set small version of the album art in the DISPLAY_ICON. This is used on
-                        // the MediaDescription and thus it should be small to be serialized if
-                        // necessary..
-                        .putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, icon)
+                            @Override
+                            public void onError(Throwable e) {
+                                System.out.println(e.getMessage());
+                            }
 
-                        .build();
+                            @Override
+                            public void onNext(VulcanRadioResult vulcanRadioResult) {
+                                mVulcanRadioResult = vulcanRadioResult;
+                                mRadioObject = getcurrentRadioObject(mVulcanRadioResult);
 
-                    mMusicProvider.updateMusic(trackId, track);
+                                if (loadtarget == null) loadtarget = new Target() {
+                                    @Override
+                                    public void onBitmapLoaded(Bitmap bitmap, Picasso.LoadedFrom from) {
 
-                    // If we are still playing the same music
-                    String currentPlayingId = MediaIDHelper.extractMusicIDFromMediaID(
-                        queueItem.getDescription().getMediaId());
-                    if (trackId.equals(currentPlayingId)) {
-                        mSession.setMetadata(track);
-                    }
-                }
-            });
+                                        MediaMetadata mTrack = mMusicProvider.getMusic(trackId);
+                                        MediaMetadata.Builder builder = new MediaMetadata.Builder(mTrack);
+                                        builder
+                                                // set high resolution bitmap in METADATA_KEY_ALBUM_ART. This is used, for
+                                                // example, on the lockscreen background when the media session is active.
+                                                .putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, bitmap)
+
+                                                // set small version of the album art in the DISPLAY_ICON. This is used on
+                                                // the MediaDescription and thus it should be small to be serialized if
+                                                // necessary..
+                                                .putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, bitmap);
+                                        if ( mRadioObject.getTrack() != null) {
+                                            VulcanRadioResult.Track track = mRadioObject.getTrack();
+                                            builder
+                                                    .putText(MediaMetadata.METADATA_KEY_TITLE, WordUtils.capitalize(track.getTitle()))
+                                                    .putText(MediaMetadata.METADATA_KEY_ARTIST, WordUtils.capitalize(track.getArtistsNames()));
+                                        } else {
+                                            builder
+                                                    .putText(MediaMetadata.METADATA_KEY_TITLE, WordUtils.capitalize(mRadioObject.getTrackTitle()))
+                                            .putText(MediaMetadata.METADATA_KEY_ARTIST, WordUtils.capitalize(getString(R.string.app_name)));
+                                        }
+                                        MediaMetadata finalTrack = builder.build();
+                                        mMusicProvider.updateMusic(trackId, finalTrack);
+
+                                        // If we are still playing the same music
+                                        String currentPlayingId = MediaIDHelper.extractMusicIDFromMediaID(
+                                                queueItem.getDescription().getMediaId());
+                                        if (trackId.equals(currentPlayingId)) {
+                                            mSession.setMetadata(finalTrack);
+                                        }
+                                    }
+
+                                    @Override
+                                    public void onBitmapFailed(Drawable errorDrawable) {
+                                        System.out.println("error loading :(");
+                                    }
+
+                                    @Override
+                                    public void onPrepareLoad(Drawable placeHolderDrawable) {
+
+                                    }
+                                };
+
+
+                                if (!mRadioObject.isSong()) {
+                                    MediaMetadata mTrack = mMusicProvider.getMusic(trackId);
+                                    String imageUrl = mTrack.getString(MusicProvider.CUSTOM_METADATA_DEFAULT_IMAGE);
+                                    Picasso.with(getApplicationContext()).load(imageUrl).into(loadtarget);
+                                } else {
+                                    if (mRadioObject.getTrack().getArtists().get(0).getLargeImage() != null) {
+                                        String imageUrl = mRadioObject.getTrack().getArtists().get(0).getLargeImage();
+                                        Picasso.with(getApplicationContext()).load(imageUrl).into(loadtarget);
+                                    } else {
+                                        MediaMetadata mTrack = mMusicProvider.getMusic(trackId);
+                                        String imageUrl = mTrack.getString(MusicProvider.CUSTOM_METADATA_DEFAULT_IMAGE);
+                                        Picasso.with(getApplicationContext()).load(imageUrl).into(loadtarget);
+                                    }
+                                }
+                            }
+                        });
+        } else {
+            if (subscription != null) {
+                subscription.unsubscribe();
+                subscription = null;
+            }
         }
     }
 
@@ -873,6 +967,7 @@ public class MusicService extends MediaBrowserService implements Playback.Callba
                 break;
             case PlaybackState.STATE_PLAYING:
                 if (resumePlaying && QueueHelper.isIndexPlayable(mCurrentIndexOnQueue, mPlayingQueue)) {
+                    mPlayback.stop(true);
                     mPlayback.play(mPlayingQueue.get(mCurrentIndexOnQueue));
                 } else if (!resumePlaying) {
                     mPlayback.pause();
@@ -910,5 +1005,39 @@ public class MusicService extends MediaBrowserService implements Playback.Callba
                 service.mServiceStarted = false;
             }
         }
+    }
+
+    public VulcanRadioResult.RadioObject getcurrentRadioObject(VulcanRadioResult vulcanRadioResult) {
+        DateFormat df1 = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+
+        VulcanRadioResult.RadioObject result = vulcanRadioResult.results.get(0);
+        for (VulcanRadioResult.RadioObject radioObject : vulcanRadioResult.results) {
+            try {
+                Date date1 = df1.parse(result.getTimestampISO());
+                Calendar calendar1 = Calendar.getInstance();
+                calendar1.setTime(date1);
+
+                Date date2 = df1.parse(radioObject.getTimestampISO());
+                Calendar calendar2 = Calendar.getInstance();
+                calendar2.setTime(date2);
+
+                Calendar calendar3 = Calendar.getInstance();
+                int diff1 = 0;
+                int diff2 = 0;
+                if (calendar3.compareTo(calendar1) > 0) {
+                    diff1 = calendar3.compareTo(calendar1);
+                }
+                if (calendar3.compareTo(calendar2) > 0) {
+                    diff2 = calendar3.compareTo(calendar2);
+                }
+
+                if (diff2 < diff1) {
+                    result = radioObject;
+                }
+            } catch (ParseException e) {
+                e.printStackTrace();
+            }
+        }
+        return result;
     }
 }

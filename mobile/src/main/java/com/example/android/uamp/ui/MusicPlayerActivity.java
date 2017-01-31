@@ -18,6 +18,7 @@ package com.example.android.uamp.ui;
 import android.app.FragmentTransaction;
 import android.app.SearchManager;
 import android.content.Intent;
+import android.media.MediaDescription;
 import android.media.browse.MediaBrowser;
 import android.os.Bundle;
 import android.provider.MediaStore;
@@ -25,6 +26,8 @@ import android.text.TextUtils;
 
 import com.example.android.uamp.R;
 import com.example.android.uamp.utils.LogHelper;
+
+import java.io.Serializable;
 
 /**
  * Main activity for the music player.
@@ -112,7 +115,7 @@ public class MusicPlayerActivity extends BaseActivity
                 .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP |
                     Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 .putExtra(EXTRA_CURRENT_MEDIA_DESCRIPTION,
-                    intent.getParcelableExtra(EXTRA_CURRENT_MEDIA_DESCRIPTION));
+                        (MediaDescription) intent.getParcelableExtra(EXTRA_CURRENT_MEDIA_DESCRIPTION));
             startActivity(fullScreenIntent);
         }
     }

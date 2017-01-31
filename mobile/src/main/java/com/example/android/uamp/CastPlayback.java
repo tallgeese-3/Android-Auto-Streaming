@@ -45,6 +45,7 @@ public class CastPlayback implements Playback {
     private static final String TAG = LogHelper.makeLogTag(CastPlayback.class);
 
     private static final String MIME_TYPE_AUDIO_MPEG = "audio/mpeg";
+    private static final String MIME_TYPE_VIDEO_MPEG = "video/mp4";
     private static final String ITEM_ID = "itemId";
 
     private final MusicProvider mMusicProvider;
@@ -262,7 +263,7 @@ public class CastPlayback implements Playback {
         mediaMetadata.addImage(image);
 
         return new MediaInfo.Builder(track.getString(MusicProvider.CUSTOM_METADATA_TRACK_SOURCE))
-                .setContentType(MIME_TYPE_AUDIO_MPEG)
+                .setContentType(MIME_TYPE_VIDEO_MPEG)
                 .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
                 .setMetadata(mediaMetadata)
                 .setCustomData(customData)
